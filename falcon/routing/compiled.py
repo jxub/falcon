@@ -14,12 +14,14 @@
 
 """Default routing engine."""
 
+from collections import UserDict
 import keyword
 import re
 import textwrap
 
 from falcon.routing import converters
 from falcon.routing.util import map_http_methods, set_default_responders
+
 
 _TAB_STR = ' ' * 4
 _FIELD_PATTERN = re.compile(
