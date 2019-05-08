@@ -14,14 +14,12 @@
 
 """Default routing engine."""
 
-from collections import UserDict
 import keyword
 import re
 import textwrap
 
 from falcon.routing import converters
 from falcon.routing.util import map_http_methods, set_default_responders
-
 
 _TAB_STR = ' ' * 4
 _FIELD_PATTERN = re.compile(
@@ -82,7 +80,7 @@ class CompiledRouter:
         self._find = self._compile()
 
     @property
-    def options(self):
+    def options(self):  # NOTE(jxub): CompiledRouterOptions works only with `from __future__ import annotations`
         return self._options
 
     @property

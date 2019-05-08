@@ -16,6 +16,7 @@
 
 from functools import wraps
 import re
+from typing import Optional, Union, Any, Callable, Dict, List, NewType, Iterable, Tuple
 
 from falcon import api_helpers as helpers, DEFAULT_MEDIA_TYPE, routing
 from falcon.http_error import HTTPError
@@ -26,6 +27,13 @@ from falcon.response import Response, ResponseOptions
 import falcon.status_codes as status
 from falcon.util import misc
 
+
+MiddlewareType = NewType('MiddlewareType', type)
+ResourceType = NewType('ResourceType', type)
+RequestType = NewType('RequestType', type)
+ResponseType = NewType('ResponseType', type)
+ParamsType = NewType('ParamsType', type)
+WsgiT = NewType('WsgiT', type)
 
 # PERF(vytas): On Python 3.5+ (including cythonized modules),
 # reference via module global is faster than going via self
@@ -157,10 +165,12 @@ class API:
                  '_middleware', '_independent_middleware', '_router_search',
                  '_static_routes')
 
-    def __init__(self, media_type=DEFAULT_MEDIA_TYPE,
-                 request_type=Request, response_type=Response,
-                 middleware=None, router=None,
-                 independent_middleware=True):
+    def __init__(self, media_type: str = DEFAULT_MEDIA_TYPE,
+                 request_type: Optional[Callable] = Request,
+                 response_type: Optional[Callable] = Response,
+                 middleware: Union[MiddlewareType, List[MiddlewareType]] = None,
+                 router: Optional[object] = None,
+                 independent_middleware: bool = True):
         self._sinks = []
         self._media_type = media_type
         self._static_routes = []
@@ -189,7 +199,8 @@ class API:
         self.add_error_handler(falcon.HTTPError, self._http_error_handler)
         self.add_error_handler(falcon.HTTPStatus, self._http_status_handler)
 
-    def __call__(self, env, start_response):  # noqa: C901
+    def __call__(self, env: Dict[Any, Any],
+                 start_response: Callable[[str, Dict[str, str]], Any]) -> List[Optional[str]]:  # noqa: C901
         """WSGI `app` method.
 
         Makes instances of API callable from a WSGI server. May be used to
@@ -329,10 +340,10 @@ class API:
         return body
 
     @property
-    def router_options(self):
+    def router_options(self) -> Dict:
         return self._router.options
 
-    def add_route(self, uri_template, resource, **kwargs):
+    def add_route(self, uri_template: str, resource: ResourceType, **kwargs: Any):
         """Associate a templatized URI path with a resource.
 
         Falcon routes incoming requests to resources based on a set of
@@ -399,7 +410,9 @@ class API:
 
         self._router.add_route(uri_template, resource, **kwargs)
 
-    def add_static_route(self, prefix, directory, downloadable=False, fallback_filename=None):
+    def add_static_route(self, prefix: str, directory: str,
+                         downloadable: bool = False,
+                         fallback_filename: Optional[str] = None):
         """Add a route to a directory of static files.
 
         Static routes provide a way to serve files directly. This
@@ -452,7 +465,8 @@ class API:
                                 fallback_filename=fallback_filename)
         )
 
-    def add_sink(self, sink, prefix=r'/'):
+    def add_sink(self, sink: Callable[[RequestType, ResponseType], Any],
+                 prefix: Optional[str] = r'/'):
         """Register a sink method for the API.
 
         If no route matches a request, but the path in the requested URI
@@ -494,7 +508,8 @@ class API:
         # is preferred.
         self._sinks.insert(0, (prefix, sink))
 
-    def add_error_handler(self, exception, handler=None):
+    def add_error_handler(self, exception: Union[Any, Iterable[Any]],
+                          handler: Optional[Callable[[RequestType, ResponseType, HTTPError, ParamsType], Any]] = None):
         """Register a handler for one or more exception types.
 
         Error handlers may be registered for any exception type, including
@@ -587,7 +602,7 @@ class API:
         else:
             raise TypeError('"exception" must be an exception type.')
 
-    def set_error_serializer(self, serializer):
+    def set_error_serializer(self, serializer: Callable[[RequestType, ResponseType, HTTPError], Any]):
         """Override the default serializer for instances of :class:`~.HTTPError`.
 
         When a responder raises an instance of :class:`~.HTTPError`,
@@ -646,7 +661,7 @@ class API:
     # Helpers that require self
     # ------------------------------------------------------------------------
 
-    def _get_responder(self, req):
+    def _get_responder(self, req: Request) -> Tuple[Callable, Dict[str], ResourceType, Any]:
         """Search routes for a matching responder.
 
         Args:
@@ -716,7 +731,7 @@ class API:
 
         return (responder, params, resource, uri_template)
 
-    def _compose_status_response(self, req, resp, http_status):
+    def _compose_status_response(self, _req: Request, resp: Response, http_status: HTTPStatus):
         """Compose a response for the given HTTPStatus instance."""
 
         # PERF(kgriffs): The code to set the status and headers is identical
@@ -731,7 +746,7 @@ class API:
         # it's acceptable to set resp.body to None (to indicate no body).
         resp.body = http_status.body
 
-    def _compose_error_response(self, req, resp, error):
+    def _compose_error_response(self, req: Request, resp: Response, error: HTTPError):
         """Compose a response for the given HTTPError instance."""
 
         resp.status = error.status
@@ -741,13 +756,13 @@ class API:
 
         self._serialize_error(req, resp, error)
 
-    def _http_status_handler(self, req, resp, status, params):
+    def _http_status_handler(self, req: Request, resp: Response, status: HTTPStatus, _params: ParamsType):
         self._compose_status_response(req, resp, status)
 
-    def _http_error_handler(self, req, resp, error, params):
+    def _http_error_handler(self, req: Request, resp: Response, error: HTTPError, _params: ParamsType):
         self._compose_error_response(req, resp, error)
 
-    def _handle_exception(self, req, resp, ex, params):
+    def _handle_exception(self, req: Request, resp: Response, ex: HTTPError, params: ParamsType):
         """Handle an exception raised from mw or a responder.
 
         Args:
@@ -784,7 +799,8 @@ class API:
     # PERF(kgriffs): Moved from api_helpers since it is slightly faster
     # to call using self, and this function is called for most
     # requests.
-    def _get_body(self, resp, wsgi_file_wrapper=None):
+    def _get_body(self, resp: Response,
+                  wsgi_file_wrapper: Optional[WsgiT] = None) -> Tuple[List[Optional[str]], Optional[int]]:
         """Convert resp content into an iterable as required by PEP 333
 
         Args:
