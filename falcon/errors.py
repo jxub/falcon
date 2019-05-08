@@ -36,6 +36,7 @@ package namespace::
 """
 
 from datetime import datetime
+from typing import Union, Optional, Dict, List, Callable, Iterable, Any
 
 from falcon import util
 from falcon.http_error import HTTPError, NoRepresentation, \
@@ -87,7 +88,11 @@ class HTTPBadRequest(HTTPError):
             base articles related to this error (default ``None``).
     """
 
-    def __init__(self, title=None, description=None, headers=None, **kwargs):
+    # NOTE(jxub) can title and description be optional?
+    def __init__(self, title: Optional[str] = None,
+                 description: Optional[str] = None,
+                 headers: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
+                 **kwargs: Any):
         super(HTTPBadRequest, self).__init__(status.HTTP_400, title,
                                              description, headers, **kwargs)
 
@@ -150,7 +155,11 @@ class HTTPUnauthorized(HTTPError):
 
     """
 
-    def __init__(self, title=None, description=None, challenges=None, headers=None, **kwargs):
+    def __init__(self, title: Optional[str] = None,
+                 description: Optional[str] = None,
+                 challenges: Iterable[str]=None,
+                 headers: Optional[Union[Dict[str, str], List[Dict[str, str]]]] = None,
+                 **kwargs: Any):
         if headers is None:
             headers = {}
 
